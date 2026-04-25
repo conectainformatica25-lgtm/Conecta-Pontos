@@ -38,8 +38,11 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
       set({ isLoading: true, error: null });
       const response = await apiClient.get(`/records/${userId}`);
       set({ records: response.data, isLoading: false });
-    } catch (error) {
-      set({ error: 'Falha ao buscar pontos', isLoading: false });
+    } catch (error: any) {
+      set({ 
+        error: `Falha ao buscar: ${error.message || JSON.stringify(error)}`, 
+        isLoading: false 
+      });
       console.error(error);
     }
   },

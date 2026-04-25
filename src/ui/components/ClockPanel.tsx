@@ -13,6 +13,7 @@ export function ClockPanel() {
   const getTodayRecordsByUserId = useTimeStore(state => state.getTodayRecordsByUserId);
   const fetchRecordsByUserId = useTimeStore(state => state.fetchRecordsByUserId);
   const isLoading = useTimeStore(state => state.isLoading);
+  const error = useTimeStore(state => state.error);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -82,6 +83,7 @@ export function ClockPanel() {
       </View>
 
       <View style={styles.actionGrid}>
+        {error && <Text style={{marginLeft: 16, color: 'red', width: '100%', marginBottom: 10}}>{error}</Text>}
         {isLoading ? <Text style={{marginLeft: 16, color: '#6b7280'}}>Carregando seus registros no Banco de Dados...</Text> : (
           <>
             {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
