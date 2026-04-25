@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
 const app = express();
@@ -8,15 +9,13 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-// Criar de um novo registro (Bater ponto)
+// API Routes
 app.post('/api/records', async (req, res) => {
   try {
     const { userId, companyId, type } = req.body;
     
-    // Assegura que o usuário existe para a ForeignKey não falhar
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      // Como não temos tela de criar usuário ainda, auto-cria para simplificar na POC
       await prisma.user.create({
         data: {
           id: userId,
@@ -38,7 +37,6 @@ app.post('/api/records', async (req, res) => {
   }
 });
 
-// Buscar registros do usuário
 app.get('/api/records/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -53,7 +51,6 @@ app.get('/api/records/:userId', async (req, res) => {
   }
 });
 
-// Buscar registros da empresa
 app.get('/api/records/company/:companyId', async (req, res) => {
   try {
     const { companyId } = req.params;
@@ -69,7 +66,16 @@ app.get('/api/records/company/:companyId', async (req, res) => {
   }
 });
 
+// Servir o Frontend SPA estático no mesmo servidor para evitar erros de CORS e URL
+const frontendPath = path.join(__dirname, '../../dist');
+app.use(express.static(frontendPath));
+
+// Fallback para o React Router (Expo Router)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server ready at http://localhost:${PORT}`);
+  console.log(`🚀 Funcional em portas dinâmicas ${PORT}`);
 });
