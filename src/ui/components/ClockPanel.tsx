@@ -11,13 +11,18 @@ export function ClockPanel() {
   const user = useAuthStore(state => state.user);
   const addRecord = useTimeStore(state => state.addRecord);
   const getTodayRecordsByUserId = useTimeStore(state => state.getTodayRecordsByUserId);
+  const fetchRecordsByUserId = useTimeStore(state => state.fetchRecordsByUserId);
+  const isLoading = useTimeStore(state => state.isLoading);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    if (user?.id) {
+      fetchRecordsByUserId(user.id);
+    }
     return () => clearInterval(timer);
-  }, []);
+  }, [user?.id, fetchRecordsByUserId]);
 
   const todayRecords = getTodayRecordsByUserId(user?.id || '');
   const hasEntrada = todayRecords.some(r => r.type === 'ENTRADA');
@@ -77,10 +82,14 @@ export function ClockPanel() {
       </View>
 
       <View style={styles.actionGrid}>
-        {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
-        {renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
-        {renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
-        {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
+        {isLoading ? <Text style={{marginLeft: 16, color: '#6b7280'}}>Carregando seus registros no Banco de Dados...</Text> : (
+          <>
+            {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
+            {renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
+            {renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
+            {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
+          </>
+        )}
       </View>
     </Animated.View>
   );
