@@ -1,8 +1,13 @@
 import axios from 'axios';
 
 // Utilizando a variável de ambiente suportada pelo Expo
-// Veja o arquivo .env.example
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+let API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+
+// No Render, a URL provida via RENDER_EXTERNAL_URL não tem o prefixo /api
+if (API_URL && !API_URL.endsWith('/api')) {
+  // Evita duplicação caso termine com /
+  API_URL = API_URL.replace(/\/$/, '') + '/api';
+}
 
 export const apiClient = axios.create({
   baseURL: API_URL,
