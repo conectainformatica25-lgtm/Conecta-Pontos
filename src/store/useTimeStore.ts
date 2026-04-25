@@ -39,8 +39,10 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
       const response = await apiClient.get(`/records/${userId}`);
       set({ records: response.data, isLoading: false });
     } catch (error: any) {
+      // Exibimos também a baseURL que o Axios está usando, para descobrir se Render está falhando a injeção da URL
+      const urlTented = apiClient.defaults.baseURL;
       set({ 
-        error: `Falha ao buscar: ${error.message || JSON.stringify(error)}`, 
+        error: `Falha (Network): ${error.message}. Tentou acessar: ${urlTented}`, 
         isLoading: false 
       });
       console.error(error);
