@@ -2,11 +2,13 @@ databases:
   - name: conecta-pontos-db
     databaseName: conectapontos
     user: conectapontos
+    plan: free
 
 services:
   - type: web
     name: conecta-pontos-app
     env: node
+    plan: free
     buildCommand: npm install && npx expo export -p web && cd backend && npm install && npx prisma generate && npx prisma db push && npm run build
     startCommand: cd backend && npm start
     envVars:
