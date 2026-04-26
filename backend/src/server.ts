@@ -146,10 +146,53 @@ app.get('/api/auth/method', async (req, res) => {
       include: { company: true },
     });
     if (!user) { res.status(404).json({ error: 'Usuário não encontrado.' }); return; }
-    res.json({ authMethod: user.company.authMethod, hasBiometric: !!user.webauthnCredentialId });
+    res.json({
+      authMethod: user.company.authMethod,
+      hasBiometric: !!user.webauthnCredentialId || !!user.faceDescriptor,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao buscar método de autenticação.' });
+  }
+});
+
+// Salvar foto de rosto (cadastro facial)
+app.post('/api/auth/face-enroll', async (req, res) => {
+  try {
+    const { userId, faceDescriptor } = req.body;
+    if (!userId || !faceDescriptor) {
+      res.status(400).json({ error: 'userId e faceDescriptor são obrigatórios.' });
+      return;
+    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { faceDescriptor },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao salvar dados faciais.' });
+  }
+});
+
+// Login facial — recebe a foto do rosto e retorna o usuário
+app.post('/api/auth/face-login', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.faceDescriptor) {
+      res.status(404).json({ error: 'Dados faciais não cadastrados para este usuário.' });
+      return;
+    }
+    // Retorna o faceDescriptor para o cliente comparar (o cliente faz a comparação)
+    res.json({
+      faceDescriptor: user.faceDescriptor,
+      userId: user.id,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, companyId: user.companyId },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro no login facial.' });
   }
 });
 

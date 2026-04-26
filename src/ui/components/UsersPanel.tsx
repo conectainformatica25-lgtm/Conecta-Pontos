@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { UserPlus, User as UserIcon, Mail, Fingerprint, Scan, KeyRound, Settings2, ShieldCheck } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { brandColors } from '../themes/colors.theme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { apiClient } from '../../services/api/apiClient';
 import { enrollBiometric } from '../../services/api/webauthn';
+import { FaceCameraModal } from './FaceCameraModal';
 
 interface Employee { id: string; name: string; email: string; role: string; biometricEnrolled?: boolean; }
 type AuthMethod = 'PASSWORD' | 'FINGERPRINT' | 'FACE';
@@ -41,6 +42,11 @@ export function UsersPanel() {
   const [loading, setLoading] = useState(false);
   const [fetchingUsers, setFetchingUsers] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+
+  // Câmera facial
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(null);
+  const [pendingEmployeeName, setPendingEmployeeName] = useState<string>('');
 
   // Auth method config
   const [companyAuthMethod, setCompanyAuthMethod] = useState<AuthMethod>('PASSWORD');
@@ -111,40 +117,32 @@ export function UsersPanel() {
       setName(''); setEmail(''); setPassword('');
 
       // 2. Se o método da empresa não é SENHA, captura biometria AGORA
-      if (companyAuthMethod !== 'PASSWORD') {
-        const methodLabel = companyAuthMethod === 'FINGERPRINT' ? 'impressão digital' : 'reconhecimento facial';
+      if (companyAuthMethod === 'FACE') {
+        // Abre câmera imediatamente
+        setPendingEmployeeId(newEmployee.id);
+        setPendingEmployeeName(newEmployee.name);
+        setShowFaceCamera(true);
+      } else if (companyAuthMethod === 'FINGERPRINT') {
         Alert.alert(
           '✅ Funcionário Criado!',
-          `Agora vamos cadastrar a ${methodLabel} de ${newEmployee.name}.\n\nO funcionário deve estar com este dispositivo e autorizar o sensor quando solicitado.`,
+          `Agora vamos cadastrar a impressão digital de ${newEmployee.name}.\n\nO funcionário deve estar com este dispositivo.`,
           [
+            { text: 'Cadastrar Depois', style: 'cancel', onPress: () => loadEmployees() },
             {
-              text: 'Cadastrar Depois',
-              style: 'cancel',
-              onPress: () => loadEmployees(),
-            },
-            {
-              text: companyAuthMethod === 'FINGERPRINT' ? '👆 Cadastrar Digital Agora' : '👤 Cadastrar Facial Agora',
+              text: '👆 Cadastrar Digital Agora',
               onPress: async () => {
                 try {
                   await enrollBiometric(newEmployee.id);
-                  Alert.alert(
-                    '🔐 Biometria Cadastrada!',
-                    `${newEmployee.name} agora pode fazer login usando apenas a ${methodLabel}. Nenhuma senha será necessária!`
-                  );
+                  Alert.alert('🔐 Digital Cadastrada!', `${newEmployee.name} pode fazer login com impressão digital!`);
                 } catch (e: any) {
-                  Alert.alert(
-                    'Atenção',
-                    `Não foi possível capturar a biometria agora.\n\nCausa: ${e?.response?.data?.error || 'Dispositivo sem suporte ou usuário cancelou.'}\n\nPode tentar de novo clicando em "Cadastrar" na lista de funcionários.`
-                  );
-                } finally {
-                  loadEmployees();
-                }
+                  Alert.alert('Erro', e?.response?.data?.error || 'Dispositivo não suporta biometria digital.');
+                } finally { loadEmployees(); }
               },
             },
           ]
         );
       } else {
-        Alert.alert('✅ Sucesso', `Funcionário ${newEmployee.name} cadastrado! Ele deve fazer login com e-mail e senha.`);
+        Alert.alert('✅ Sucesso', `Funcionário ${newEmployee.name} cadastrado com login por senha.`);
         loadEmployees();
       }
     } catch (error: any) {
@@ -157,13 +155,38 @@ export function UsersPanel() {
 
 
   return (
-    <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
+    <>
+      <FaceCameraModal
+        visible={showFaceCamera}
+        mode="enroll"
+        employeeName={pendingEmployeeName}
+        onCapture={async (photoBase64) => {
+          setShowFaceCamera(false);
+          try {
+            await apiClient.post('/auth/face-enroll', {
+              userId: pendingEmployeeId,
+              faceDescriptor: photoBase64,
+            });
+            Alert.alert('✅ Rosto Cadastrado!', `${pendingEmployeeName} agora pode fazer login com reconhecimento facial!`);
+          } catch (e: any) {
+            Alert.alert('Erro', e?.response?.data?.error || 'Erro ao salvar dados faciais.');
+          } finally {
+            loadEmployees();
+          }
+        }}
+        onClose={() => {
+          setShowFaceCamera(false);
+          loadEmployees();
+        }}
+      />
 
-      {/* Configuração de Autenticação */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Settings2 color={brandColors.primary} size={24} />
-          <Text style={styles.cardTitle}>Método de Autenticação</Text>
+      <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
+
+        {/* Configuração de Autenticação */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Settings2 color={brandColors.primary} size={24} />
+            <Text style={styles.cardTitle}>Método de Autenticação</Text>
         </View>
         <Text style={styles.cardDesc}>
           Escolha como seus funcionários fazem o login no sistema. Todos usarão o mesmo método.
@@ -316,6 +339,7 @@ export function UsersPanel() {
       </View>
 
     </Animated.View>
+    </>
   );
 }
 

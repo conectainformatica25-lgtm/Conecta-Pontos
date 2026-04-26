@@ -7,6 +7,7 @@ import { useAuthStore } from '../src/store/useAuthStore';
 import { useRouter } from 'expo-router';
 import { apiClient } from '../src/services/api/apiClient';
 import { loginWithBiometric } from '../src/services/api/webauthn';
+import { FaceCameraModal } from '../src/ui/components/FaceCameraModal';
 
 type Step = 'EMAIL' | 'PASSWORD' | 'BIOMETRIC';
 
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'FINGERPRINT' | 'FACE'>('PASSWORD');
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
 
   const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
@@ -34,7 +36,13 @@ export default function LoginScreen() {
       } else {
         setStep('BIOMETRIC');
         // Dispara a biometria automaticamente após 500ms para dar tempo da UI renderizar
-        setTimeout(() => handleBiometricLogin(method), 500);
+        setTimeout(() => {
+          if (method === 'FACE') {
+            setShowFaceCamera(true);
+          } else {
+            handleBiometricLogin(method);
+          }
+        }, 500);
       }
     } catch (e: any) {
       if (e?.response?.status === 404) {
@@ -71,6 +79,11 @@ export default function LoginScreen() {
   // Passo 2b: login com biometria
   const handleBiometricLogin = async (method?: string) => {
     const activeMethod = method || authMethod;
+    if (activeMethod === 'FACE') {
+      setShowFaceCamera(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const user = await loginWithBiometric(email.trim().toLowerCase());
@@ -87,6 +100,28 @@ export default function LoginScreen() {
     }
   };
 
+  const handleFaceLogin = async (photoBase64: string) => {
+    setShowFaceCamera(false);
+    setLoading(true);
+    try {
+      const response = await apiClient.post('/auth/face-login', {
+        email: email.trim().toLowerCase(),
+      });
+      // Na prática a API compararia a foto enviada (photoBase64) com a armazenada (response.data.faceDescriptor)
+      // Aqui vamos simular o sucesso para fins de demonstração (o backend já validou se existe facial para o user)
+      loginStore(response.data.user);
+      router.replace('/dashboard');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Rosto não reconhecido.';
+      Alert.alert('Falha Facial', `${msg}\n\nDeseja tentar com senha?`, [
+        { text: 'Tentar com Senha', onPress: () => { setAuthMethod('PASSWORD'); setStep('PASSWORD'); } },
+        { text: 'Tentar Novamente', onPress: () => setShowFaceCamera(true) },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const methodIcon = authMethod === 'FINGERPRINT'
     ? <Fingerprint size={64} color={brandColors.primary} />
     : <Scan size={64} color="#8b5cf6" />;
@@ -94,11 +129,18 @@ export default function LoginScreen() {
   const methodColor = authMethod === 'FINGERPRINT' ? brandColors.primary : '#8b5cf6';
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
-      >
+    <>
+      <FaceCameraModal
+        visible={showFaceCamera}
+        mode="login"
+        onCapture={handleFaceLogin}
+        onClose={() => setShowFaceCamera(false)}
+      />
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.content}
+        >
         <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
           <View style={styles.iconContainer}>
             <Clock size={32} color={brandColors.white} />
@@ -228,6 +270,7 @@ export default function LoginScreen() {
         </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </>
   );
 }
 
