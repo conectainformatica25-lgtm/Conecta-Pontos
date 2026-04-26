@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, Alert, ActivityIndicator } from 'react-native';
-import { Clock, Eye, EyeOff } from 'lucide-react-native';
+import { Clock, Eye, EyeOff, Fingerprint, Scan } from 'lucide-react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useRouter } from 'expo-router';
 import { apiClient } from '../src/services/api/apiClient';
+import { loginWithBiometric } from '../src/services/api/webauthn';
 
 const { width } = Dimensions.get('window');
 
@@ -14,7 +15,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+  const [bioLoading, setBioLoading] = useState(false);
+
   const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
 
@@ -23,18 +25,34 @@ export default function LoginScreen() {
       Alert.alert('Erro', 'Por favor, preencha e-mail e senha.');
       return;
     }
-    
     setLoading(true);
     try {
       const response = await apiClient.post('/auth/login', { email: email.trim().toLowerCase(), password });
-      const user = response.data;
-      loginStore(user);
+      loginStore(response.data);
       router.replace('/dashboard');
     } catch (error: any) {
       const msg = error?.response?.data?.error || 'Não foi possível fazer login. Verifique sua conexão.';
       Alert.alert('Acesso Negado', msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!email.trim()) {
+      Alert.alert('Atenção', 'Digite seu e-mail primeiro para usar a biometria.');
+      return;
+    }
+    setBioLoading(true);
+    try {
+      const user = await loginWithBiometric(email.trim().toLowerCase());
+      loginStore(user);
+      router.replace('/dashboard');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Falha na autenticação biométrica. Tente com senha.';
+      Alert.alert('Biometria Falhou', msg);
+    } finally {
+      setBioLoading(false);
     }
   };
 
@@ -93,13 +111,42 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} activeOpacity={0.8} disabled={loading}>
+          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} activeOpacity={0.8} disabled={loading || bioLoading}>
             {loading ? (
               <ActivityIndicator color={brandColors.white} />
             ) : (
-              <Text style={styles.buttonText}>Entrar</Text>
+              <Text style={styles.buttonText}>Entrar com Senha</Text>
             )}
           </TouchableOpacity>
+
+          {/* Botão de Login Biométrico */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>ou</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.bioRow}>
+            <TouchableOpacity
+              style={[styles.bioButton, { borderColor: '#10b981' }]}
+              onPress={handleBiometricLogin}
+              disabled={loading || bioLoading}
+              activeOpacity={0.8}
+            >
+              {bioLoading ? <ActivityIndicator color="#10b981" size="small" /> : <Fingerprint size={22} color="#10b981" />}
+              <Text style={[styles.bioBtnText, { color: '#10b981' }]}>Digital</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.bioButton, { borderColor: '#8b5cf6' }]}
+              onPress={handleBiometricLogin}
+              disabled={loading || bioLoading}
+              activeOpacity={0.8}
+            >
+              {bioLoading ? <ActivityIndicator color="#8b5cf6" size="small" /> : <Scan size={22} color="#8b5cf6" />}
+              <Text style={[styles.bioBtnText, { color: '#8b5cf6' }]}>Facial</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>Não tem uma conta SaaS?</Text>
@@ -243,4 +290,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 16,
   },
+  divider: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 16,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#e5e7eb' },
+  dividerText: { color: '#9ca3af', fontSize: 13 },
+  bioRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
+  bioButton: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderWidth: 1.5, borderRadius: 12, paddingVertical: 12,
+    backgroundColor: '#fff',
+  },
+  bioBtnText: { fontSize: 14, fontWeight: '700' },
 });

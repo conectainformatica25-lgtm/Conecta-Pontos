@@ -16,16 +16,19 @@ model Company {
 }
 
 model User {
-  id        String       @id @default(uuid())
-  email     String       @unique
-  name      String
-  password  String
-  role      String       @default("EMPLOYEE")
-  companyId String
-  company   Company      @relation(fields: [companyId], references: [id])
-  records   TimeRecord[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                   String       @id @default(uuid())
+  email                String       @unique
+  name                 String
+  password             String
+  role                 String       @default("EMPLOYEE")
+  companyId            String
+  company              Company      @relation(fields: [companyId], references: [id])
+  webauthnCredentialId String?
+  webauthnPublicKey    String?
+  webauthnCounter      Int          @default(0)
+  records              TimeRecord[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 }
 
 model TimeRecord {

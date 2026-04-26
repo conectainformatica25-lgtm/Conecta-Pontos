@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { UserPlus, User as UserIcon, Mail, Fingerprint, Scan, KeyRound, Settings2 } from 'lucide-react-native';
+import { UserPlus, User as UserIcon, Mail, Fingerprint, Scan, KeyRound, Settings2, ShieldCheck } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { brandColors } from '../themes/colors.theme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { apiClient } from '../../services/api/apiClient';
+import { enrollBiometric } from '../../services/api/webauthn';
 
-interface Employee { id: string; name: string; email: string; role: string; }
+interface Employee { id: string; name: string; email: string; role: string; biometricEnrolled?: boolean; }
 type AuthMethod = 'PASSWORD' | 'FINGERPRINT' | 'FACE';
 
 const AUTH_OPTIONS: { value: AuthMethod; label: string; icon: any; desc: string; color: string }[] = [
@@ -223,6 +224,53 @@ export function UsersPanel() {
                 </View>
                 <Text style={styles.userRole}>{emp.role === 'ADMIN' ? '👑 Admin' : '👤 Funcionário'}</Text>
               </View>
+              {/* Botão de cadastro biométrico */}
+              {companyAuthMethod !== 'PASSWORD' && (
+                emp.biometricEnrolled ? (
+                  <View style={styles.bioEnrolled}>
+                    <ShieldCheck size={16} color="#10b981" />
+                    <Text style={styles.bioEnrolledText}>Bio OK</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.bioBtn}
+                    onPress={async () => {
+                      try {
+                        Alert.alert(
+                          'Cadastrar Biometria',
+                          `Vamos agora cadastrar a ${companyAuthMethod === 'FINGERPRINT' ? 'impressão digital' : 'face'} de ${emp.name}. O funcionário deve estar com este dispositivo.`,
+                          [
+                            { text: 'Cancelar', style: 'cancel' },
+                            {
+                              text: 'Iniciar',
+                              onPress: async () => {
+                                try {
+                                  await enrollBiometric(emp.id);
+                                  Alert.alert('✅ Sucesso!', `Biometria de ${emp.name} cadastrada com sucesso!`);
+                                  loadEmployees();
+                                } catch (e: any) {
+                                  Alert.alert('Erro', e?.response?.data?.error || 'Falha ao cadastrar biometria. O dispositivo suporta biometria?');
+                                }
+                              }
+                            }
+                          ]
+                        );
+                      } catch (e) {
+                        Alert.alert('Erro', 'Não foi possível iniciar o cadastro.');
+                      }
+                    }}
+                  >
+                    {companyAuthMethod === 'FINGERPRINT' ? (
+                      <Fingerprint size={18} color={brandColors.primary} />
+                    ) : (
+                      <Scan size={18} color="#8b5cf6" />
+                    )}
+                    <Text style={[styles.bioBtnText, { color: companyAuthMethod === 'FINGERPRINT' ? brandColors.primary : '#8b5cf6' }]}>
+                      Cadastrar
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
           ))
         )}
@@ -293,4 +341,15 @@ const styles = StyleSheet.create({
   userName: { fontSize: 16, fontWeight: '600', color: '#111827' },
   userEmail: { fontSize: 12, color: '#9ca3af' },
   userRole: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  bioBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: brandColors.primary,
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  bioBtnText: { fontSize: 12, fontWeight: '700' },
+  bioEnrolled: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#ecfdf5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  bioEnrolledText: { fontSize: 12, fontWeight: '700', color: '#10b981' },
 });
