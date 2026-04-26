@@ -20,7 +20,7 @@ function hashPassword(password: string): string {
 // Registrar empresa + admin
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { companyName, adminName, email, password } = req.body;
+    const { companyName, adminName, email, password, authMethod } = req.body;
     if (!companyName || !adminName || !email || !password) {
       res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
       return;
@@ -32,7 +32,9 @@ app.post('/api/auth/register', async (req, res) => {
       return;
     }
 
-    const company = await prisma.company.create({ data: { name: companyName } });
+    const company = await prisma.company.create({
+      data: { name: companyName, authMethod: authMethod || 'PASSWORD' }
+    });
     const user = await prisma.user.create({
       data: {
         name: adminName,
@@ -49,10 +51,47 @@ app.post('/api/auth/register', async (req, res) => {
       email: user.email,
       role: user.role,
       companyId: user.companyId,
+      authMethod: company.authMethod,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao registrar empresa.' });
+  }
+});
+
+// Buscar dados da empresa (incluindo authMethod)
+app.get('/api/company/:companyId', async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      res.status(404).json({ error: 'Empresa não encontrada.' });
+      return;
+    }
+    res.json(company);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar empresa.' });
+  }
+});
+
+// Atualizar método de autenticação da empresa
+app.put('/api/company/:companyId/auth-method', async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const { authMethod } = req.body;
+    if (!['PASSWORD', 'FINGERPRINT', 'FACE'].includes(authMethod)) {
+      res.status(400).json({ error: 'Método de autenticação inválido.' });
+      return;
+    }
+    const company = await prisma.company.update({
+      where: { id: companyId },
+      data: { authMethod },
+    });
+    res.json(company);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao atualizar método de autenticação.' });
   }
 });
 
