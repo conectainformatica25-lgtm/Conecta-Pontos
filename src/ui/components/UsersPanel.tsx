@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { apiClient } from '../../services/api/apiClient';
 import { enrollBiometric } from '../../services/api/webauthn';
 import { FaceCameraModal } from './FaceCameraModal';
+import { FingerprintModal } from './FingerprintModal';
 
 interface Employee { id: string; name: string; email: string; role: string; biometricEnrolled?: boolean; }
 type AuthMethod = 'PASSWORD' | 'FINGERPRINT' | 'FACE';
@@ -43,8 +44,9 @@ export function UsersPanel() {
   const [fetchingUsers, setFetchingUsers] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
-  // Câmera facial
+  // Câmera facial e Biometria
   const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [showFingerprint, setShowFingerprint] = useState(false);
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(null);
   const [pendingEmployeeName, setPendingEmployeeName] = useState<string>('');
 
@@ -118,29 +120,13 @@ export function UsersPanel() {
 
       // 2. Se o método da empresa não é SENHA, captura biometria AGORA
       if (companyAuthMethod === 'FACE') {
-        // Abre câmera imediatamente
         setPendingEmployeeId(newEmployee.id);
         setPendingEmployeeName(newEmployee.name);
         setShowFaceCamera(true);
       } else if (companyAuthMethod === 'FINGERPRINT') {
-        Alert.alert(
-          '✅ Funcionário Criado!',
-          `Agora vamos cadastrar a impressão digital de ${newEmployee.name}.\n\nO funcionário deve estar com este dispositivo.`,
-          [
-            { text: 'Cadastrar Depois', style: 'cancel', onPress: () => loadEmployees() },
-            {
-              text: '👆 Cadastrar Digital Agora',
-              onPress: async () => {
-                try {
-                  await enrollBiometric(newEmployee.id);
-                  Alert.alert('🔐 Digital Cadastrada!', `${newEmployee.name} pode fazer login com impressão digital!`);
-                } catch (e: any) {
-                  Alert.alert('Erro', e?.response?.data?.error || 'Dispositivo não suporta biometria digital.');
-                } finally { loadEmployees(); }
-              },
-            },
-          ]
-        );
+        setPendingEmployeeId(newEmployee.id);
+        setPendingEmployeeName(newEmployee.name);
+        setShowFingerprint(true);
       } else {
         Alert.alert('✅ Sucesso', `Funcionário ${newEmployee.name} cadastrado com login por senha.`);
         loadEmployees();
@@ -176,6 +162,20 @@ export function UsersPanel() {
         }}
         onClose={() => {
           setShowFaceCamera(false);
+          loadEmployees();
+        }}
+      />
+
+      <FingerprintModal
+        visible={showFingerprint && !!pendingEmployeeId}
+        employeeId={pendingEmployeeId!}
+        employeeName={pendingEmployeeName}
+        onSuccess={() => {
+          setShowFingerprint(false);
+          loadEmployees();
+        }}
+        onClose={() => {
+          setShowFingerprint(false);
           loadEmployees();
         }}
       />
@@ -297,28 +297,14 @@ export function UsersPanel() {
                   <TouchableOpacity
                     style={styles.bioBtn}
                     onPress={async () => {
-                      try {
-                        Alert.alert(
-                          'Cadastrar Biometria',
-                          `Vamos agora cadastrar a ${companyAuthMethod === 'FINGERPRINT' ? 'impressão digital' : 'face'} de ${emp.name}. O funcionário deve estar com este dispositivo.`,
-                          [
-                            { text: 'Cancelar', style: 'cancel' },
-                            {
-                              text: 'Iniciar',
-                              onPress: async () => {
-                                try {
-                                  await enrollBiometric(emp.id);
-                                  Alert.alert('✅ Sucesso!', `Biometria de ${emp.name} cadastrada com sucesso!`);
-                                  loadEmployees();
-                                } catch (e: any) {
-                                  Alert.alert('Erro', e?.response?.data?.error || 'Falha ao cadastrar biometria. O dispositivo suporta biometria?');
-                                }
-                              }
-                            }
-                          ]
-                        );
-                      } catch (e) {
-                        Alert.alert('Erro', 'Não foi possível iniciar o cadastro.');
+                      if (companyAuthMethod === 'FACE') {
+                        setPendingEmployeeId(emp.id);
+                        setPendingEmployeeName(emp.name);
+                        setShowFaceCamera(true);
+                      } else {
+                        setPendingEmployeeId(emp.id);
+                        setPendingEmployeeName(emp.name);
+                        setShowFingerprint(true);
                       }
                     }}
                   >

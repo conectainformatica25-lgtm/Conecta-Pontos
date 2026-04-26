@@ -30,8 +30,12 @@ export default function LoginScreen() {
     try {
       const res = await apiClient.get(`/auth/method?email=${encodeURIComponent(email.trim().toLowerCase())}`);
       const method = res.data.authMethod;
+      const role = res.data.role;
       setAuthMethod(method);
-      if (method === 'PASSWORD') {
+
+      // O Administrador (dono da empresa) SEMPRE entra com senha
+      if (method === 'PASSWORD' || role === 'ADMIN') {
+        setAuthMethod('PASSWORD'); // Força a UI a mostrar senha para Admin
         setStep('PASSWORD');
       } else {
         setStep('BIOMETRIC');

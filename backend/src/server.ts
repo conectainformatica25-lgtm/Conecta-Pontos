@@ -149,6 +149,7 @@ app.get('/api/auth/method', async (req, res) => {
     res.json({
       authMethod: user.company.authMethod,
       hasBiometric: !!user.webauthnCredentialId || !!user.faceDescriptor,
+      role: user.role,
     });
   } catch (error) {
     console.error(error);
