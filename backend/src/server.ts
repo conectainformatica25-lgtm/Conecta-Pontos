@@ -136,7 +136,23 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Criar funcionário (pelo admin)
+// Buscar método de autenticação pelo e-mail (para o login se adaptar)
+app.get('/api/auth/method', async (req, res) => {
+  try {
+    const email = req.query.email as string;
+    if (!email) { res.status(400).json({ error: 'E-mail obrigatório.' }); return; }
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { company: true },
+    });
+    if (!user) { res.status(404).json({ error: 'Usuário não encontrado.' }); return; }
+    res.json({ authMethod: user.company.authMethod, hasBiometric: !!user.webauthnCredentialId });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar método de autenticação.' });
+  }
+});
+
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email, password, role, companyId } = req.body;

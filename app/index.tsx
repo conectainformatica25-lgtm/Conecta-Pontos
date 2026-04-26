@@ -1,64 +1,101 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, Alert, ActivityIndicator } from 'react-native';
-import { Clock, Eye, EyeOff, Fingerprint, Scan } from 'lucide-react-native';
-import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { Clock, Eye, EyeOff, Fingerprint, Scan, ArrowRight } from 'lucide-react-native';
+import Animated, { FadeInUp, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useRouter } from 'expo-router';
 import { apiClient } from '../src/services/api/apiClient';
 import { loginWithBiometric } from '../src/services/api/webauthn';
 
-const { width } = Dimensions.get('window');
+type Step = 'EMAIL' | 'PASSWORD' | 'BIOMETRIC';
 
 export default function LoginScreen() {
+  const [step, setStep] = useState<Step>('EMAIL');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [bioLoading, setBioLoading] = useState(false);
+  const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'FINGERPRINT' | 'FACE'>('PASSWORD');
 
   const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Erro', 'Por favor, preencha e-mail e senha.');
-      return;
-    }
+  // Passo 1: detecta o método da empresa pelo e-mail
+  const handleEmailNext = async () => {
+    if (!email.trim()) { Alert.alert('Erro', 'Digite seu e-mail.'); return; }
     setLoading(true);
     try {
-      const response = await apiClient.post('/auth/login', { email: email.trim().toLowerCase(), password });
+      const res = await apiClient.get(`/auth/method?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      const method = res.data.authMethod;
+      setAuthMethod(method);
+      if (method === 'PASSWORD') {
+        setStep('PASSWORD');
+      } else {
+        setStep('BIOMETRIC');
+        // Dispara a biometria automaticamente após 500ms para dar tempo da UI renderizar
+        setTimeout(() => handleBiometricLogin(method), 500);
+      }
+    } catch (e: any) {
+      if (e?.response?.status === 404) {
+        Alert.alert('Não Encontrado', 'E-mail não cadastrado no sistema.');
+      } else {
+        // Se não encontrar, tenta login normal com senha (pode ser admin)
+        setAuthMethod('PASSWORD');
+        setStep('PASSWORD');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Passo 2a: login com senha
+  const handlePasswordLogin = async () => {
+    if (!password.trim()) { Alert.alert('Erro', 'Digite sua senha.'); return; }
+    setLoading(true);
+    try {
+      const response = await apiClient.post('/auth/login', {
+        email: email.trim().toLowerCase(),
+        password,
+      });
       loginStore(response.data);
       router.replace('/dashboard');
     } catch (error: any) {
-      const msg = error?.response?.data?.error || 'Não foi possível fazer login. Verifique sua conexão.';
+      const msg = error?.response?.data?.error || 'E-mail ou senha incorretos.';
       Alert.alert('Acesso Negado', msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBiometricLogin = async () => {
-    if (!email.trim()) {
-      Alert.alert('Atenção', 'Digite seu e-mail primeiro para usar a biometria.');
-      return;
-    }
-    setBioLoading(true);
+  // Passo 2b: login com biometria
+  const handleBiometricLogin = async (method?: string) => {
+    const activeMethod = method || authMethod;
+    setLoading(true);
     try {
       const user = await loginWithBiometric(email.trim().toLowerCase());
       loginStore(user);
       router.replace('/dashboard');
     } catch (error: any) {
-      const msg = error?.response?.data?.error || 'Falha na autenticação biométrica. Tente com senha.';
-      Alert.alert('Biometria Falhou', msg);
+      const msg = error?.response?.data?.error || 'Biometria não reconhecida.';
+      Alert.alert('Falha Biométrica', `${msg}\n\nDeseja tentar com senha?`, [
+        { text: 'Tentar com Senha', onPress: () => { setAuthMethod('PASSWORD'); setStep('PASSWORD'); } },
+        { text: 'Tentar Novamente', onPress: () => handleBiometricLogin(activeMethod) },
+      ]);
     } finally {
-      setBioLoading(false);
+      setLoading(false);
     }
   };
 
+  const methodIcon = authMethod === 'FINGERPRINT'
+    ? <Fingerprint size={64} color={brandColors.primary} />
+    : <Scan size={64} color="#8b5cf6" />;
+  const methodLabel = authMethod === 'FINGERPRINT' ? 'Impressão Digital' : 'Reconhecimento Facial';
+  const methodColor = authMethod === 'FINGERPRINT' ? brandColors.primary : '#8b5cf6';
+
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
@@ -71,89 +108,121 @@ export default function LoginScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInUp.duration(600).delay(200)} style={styles.card}>
-          <Text style={styles.welcomeTitle}>Bem-vindo!</Text>
-          <Text style={styles.welcomeSubtitle}>Faça login para continuar</Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>E-mail</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite seu e-mail"
-              placeholderTextColor="#9ca3af"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
+          {/* ===== ETAPA 1: E-MAIL ===== */}
+          {step === 'EMAIL' && (
+            <>
+              <Text style={styles.welcomeTitle}>Bem-vindo!</Text>
+              <Text style={styles.welcomeSubtitle}>Digite seu e-mail para continuar</Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Senha</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                placeholder="Digite sua senha"
-                placeholderTextColor="#9ca3af"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeOff size={20} color="#6b7280" />
-                ) : (
-                  <Eye size={20} color="#6b7280" />
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>E-mail</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="seu@email.com"
+                  placeholderTextColor="#9ca3af"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onSubmitEditing={handleEmailNext}
+                />
+              </View>
+
+              <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleEmailNext} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.buttonText}>Continuar</Text>
+                    <ArrowRight size={20} color="#fff" />
+                  </View>
                 )}
               </TouchableOpacity>
+            </>
+          )}
+
+          {/* ===== ETAPA 2A: SENHA ===== */}
+          {step === 'PASSWORD' && (
+            <>
+              <Text style={styles.welcomeTitle}>Digite sua senha</Text>
+              <Text style={styles.welcomeSubtitle}>{email}</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Senha</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput]}
+                    placeholder="••••••••"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    autoFocus
+                    onSubmitEditing={handlePasswordLogin}
+                  />
+                  <TouchableOpacity style={styles.eyeIcon} onPress={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff size={20} color="#6b7280" /> : <Eye size={20} color="#6b7280" />}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handlePasswordLogin} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Entrar</Text>}
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { setStep('EMAIL'); setPassword(''); }} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={{ color: '#6b7280', fontSize: 14 }}>← Trocar e-mail</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* ===== ETAPA 2B: BIOMETRIA ===== */}
+          {step === 'BIOMETRIC' && (
+            <>
+              <Text style={styles.welcomeTitle}>{methodLabel}</Text>
+              <Text style={styles.welcomeSubtitle}>{email}</Text>
+
+              <View style={styles.biometricContainer}>
+                <View style={[styles.biometricIcon, { borderColor: methodColor + '40', shadowColor: methodColor }]}>
+                  {methodIcon}
+                </View>
+                {loading ? (
+                  <>
+                    <ActivityIndicator color={methodColor} size="large" style={{ marginTop: 16 }} />
+                    <Text style={[styles.bioHint, { color: methodColor }]}>Aguardando sensor...</Text>
+                  </>
+                ) : (
+                  <Text style={styles.bioHint}>Toque no botão para autenticar</Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: methodColor }, loading && styles.buttonDisabled]}
+                onPress={() => handleBiometricLogin()}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    {authMethod === 'FINGERPRINT' ? <Fingerprint size={22} color="#fff" /> : <Scan size={22} color="#fff" />}
+                    <Text style={styles.buttonText}>Autenticar com {methodLabel}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { setStep('EMAIL'); }} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={{ color: '#6b7280', fontSize: 14 }}>← Trocar e-mail</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Rodapé com link de cadastro — só na etapa de e-mail */}
+          {step === 'EMAIL' && (
+            <View style={styles.registerContainer}>
+              <Text style={styles.registerText}>Não tem conta?</Text>
+              <TouchableOpacity onPress={() => router.push('/register')}>
+                <Text style={styles.registerLink}> Cadastre sua empresa</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-
-          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} activeOpacity={0.8} disabled={loading || bioLoading}>
-            {loading ? (
-              <ActivityIndicator color={brandColors.white} />
-            ) : (
-              <Text style={styles.buttonText}>Entrar com Senha</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Botão de Login Biométrico */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>ou</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.bioRow}>
-            <TouchableOpacity
-              style={[styles.bioButton, { borderColor: '#10b981' }]}
-              onPress={handleBiometricLogin}
-              disabled={loading || bioLoading}
-              activeOpacity={0.8}
-            >
-              {bioLoading ? <ActivityIndicator color="#10b981" size="small" /> : <Fingerprint size={22} color="#10b981" />}
-              <Text style={[styles.bioBtnText, { color: '#10b981' }]}>Digital</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.bioButton, { borderColor: '#8b5cf6' }]}
-              onPress={handleBiometricLogin}
-              disabled={loading || bioLoading}
-              activeOpacity={0.8}
-            >
-              {bioLoading ? <ActivityIndicator color="#8b5cf6" size="small" /> : <Scan size={22} color="#8b5cf6" />}
-              <Text style={[styles.bioBtnText, { color: '#8b5cf6' }]}>Facial</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.registerContainer}>
-            <Text style={styles.registerText}>Não tem uma conta SaaS?</Text>
-            <TouchableOpacity onPress={() => router.push('/register')}>
-              <Text style={styles.registerLink}> Cadastre sua empresa</Text>
-            </TouchableOpacity>
-          </View>
+          )}
 
           <Text style={styles.footerText}>Conecta Pontos © 2026</Text>
         </Animated.View>
@@ -163,143 +232,48 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: brandColors.primary,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: brandColors.primary },
+  content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  header: { alignItems: 'center', marginBottom: 40 },
   iconContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 16,
-    borderRadius: 24,
-    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)', padding: 16,
+    borderRadius: 24, marginBottom: 16,
   },
-  appName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: brandColors.white,
-    letterSpacing: -0.5,
-  },
-  appSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 4,
-  },
+  appName: { fontSize: 28, fontWeight: 'bold', color: '#fff', letterSpacing: -0.5 },
+  appSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
   card: {
-    backgroundColor: brandColors.white,
-    borderRadius: 24,
-    padding: 32,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
+    backgroundColor: '#fff', borderRadius: 24, padding: 32,
+    width: '100%', maxWidth: 400,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1, shadowRadius: 20, elevation: 10,
   },
-  welcomeTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  welcomeSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 24,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
+  welcomeTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
+  welcomeSubtitle: { fontSize: 14, color: '#6b7280', marginBottom: 24 },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
   input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    backgroundColor: '#f9fafb',
-    color: '#1f2937',
+    height: 48, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 12,
+    paddingHorizontal: 16, fontSize: 15, backgroundColor: '#f9fafb', color: '#1f2937',
   },
-  passwordContainer: {
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  passwordInput: {
-    paddingRight: 48,
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: 16,
-    height: '100%',
-    justifyContent: 'center',
-  },
+  passwordContainer: { position: 'relative', justifyContent: 'center' },
+  passwordInput: { paddingRight: 48 },
+  eyeIcon: { position: 'absolute', right: 16, height: '100%', justifyContent: 'center' },
   button: {
-    backgroundColor: brandColors.primary,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    elevation: 2,
-    shadowColor: brandColors.primaryHover,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    backgroundColor: brandColors.primary, height: 50, borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center', marginTop: 8,
+    elevation: 2, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
   },
-  buttonDisabled: {
-    opacity: 0.7,
+  buttonDisabled: { opacity: 0.7 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  biometricContainer: { alignItems: 'center', paddingVertical: 24 },
+  biometricIcon: {
+    width: 120, height: 120, borderRadius: 60,
+    borderWidth: 3, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#f9fafb', shadowOpacity: 0.2, shadowRadius: 12, elevation: 6,
   },
-  buttonText: {
-    color: brandColors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  registerText: {
-    color: '#6b7280',
-    fontSize: 14,
-  },
-  registerLink: {
-    color: brandColors.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  footerText: {
-    textAlign: 'center',
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 16,
-  },
-  divider: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 16,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#e5e7eb' },
-  dividerText: { color: '#9ca3af', fontSize: 13 },
-  bioRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
-  bioButton: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, borderWidth: 1.5, borderRadius: 12, paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-  bioBtnText: { fontSize: 14, fontWeight: '700' },
+  bioHint: { marginTop: 16, fontSize: 15, color: '#6b7280', textAlign: 'center' },
+  registerContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
+  registerText: { color: '#6b7280', fontSize: 14 },
+  registerLink: { color: brandColors.primary, fontSize: 14, fontWeight: 'bold' },
+  footerText: { textAlign: 'center', color: '#9ca3af', fontSize: 12, marginTop: 16 },
 });

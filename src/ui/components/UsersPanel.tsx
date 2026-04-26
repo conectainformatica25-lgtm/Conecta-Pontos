@@ -99,16 +99,54 @@ export function UsersPanel() {
 
     setLoading(true);
     try {
-      await apiClient.post('/users', {
+      // 1. Cria o funcionário no banco
+      const res = await apiClient.post('/users', {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
         role: 'EMPLOYEE',
         companyId: user.companyId,
       });
-      Alert.alert('Sucesso', `Funcionário ${name} cadastrado com sucesso!`);
+      const newEmployee = res.data;
       setName(''); setEmail(''); setPassword('');
-      loadEmployees();
+
+      // 2. Se o método da empresa não é SENHA, captura biometria AGORA
+      if (companyAuthMethod !== 'PASSWORD') {
+        const methodLabel = companyAuthMethod === 'FINGERPRINT' ? 'impressão digital' : 'reconhecimento facial';
+        Alert.alert(
+          '✅ Funcionário Criado!',
+          `Agora vamos cadastrar a ${methodLabel} de ${newEmployee.name}.\n\nO funcionário deve estar com este dispositivo e autorizar o sensor quando solicitado.`,
+          [
+            {
+              text: 'Cadastrar Depois',
+              style: 'cancel',
+              onPress: () => loadEmployees(),
+            },
+            {
+              text: companyAuthMethod === 'FINGERPRINT' ? '👆 Cadastrar Digital Agora' : '👤 Cadastrar Facial Agora',
+              onPress: async () => {
+                try {
+                  await enrollBiometric(newEmployee.id);
+                  Alert.alert(
+                    '🔐 Biometria Cadastrada!',
+                    `${newEmployee.name} agora pode fazer login usando apenas a ${methodLabel}. Nenhuma senha será necessária!`
+                  );
+                } catch (e: any) {
+                  Alert.alert(
+                    'Atenção',
+                    `Não foi possível capturar a biometria agora.\n\nCausa: ${e?.response?.data?.error || 'Dispositivo sem suporte ou usuário cancelou.'}\n\nPode tentar de novo clicando em "Cadastrar" na lista de funcionários.`
+                  );
+                } finally {
+                  loadEmployees();
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('✅ Sucesso', `Funcionário ${newEmployee.name} cadastrado! Ele deve fazer login com e-mail e senha.`);
+        loadEmployees();
+      }
     } catch (error: any) {
       const msg = error?.response?.data?.error || 'Erro ao criar funcionário.';
       Alert.alert('Erro', msg);
@@ -116,6 +154,7 @@ export function UsersPanel() {
       setLoading(false);
     }
   };
+
 
   return (
     <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
