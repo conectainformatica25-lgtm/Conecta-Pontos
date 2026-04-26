@@ -1,104 +1,129 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { FileText, Clock, ChevronRight } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { brandColors } from '../themes/colors.theme';
-import { useTimeStore } from '../../store/useTimeStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { apiClient } from '../../services/api/apiClient';
 import { TimeBankService } from '../../domain/services/TimeBankService';
 import { useRouter } from 'expo-router';
 
+interface EmployeeReport {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  hoursWorked: number;
+  balance: number;
+  todayRecords: any[];
+}
+
 export function ReportsPanel() {
-  const getRecordsByUserId = useTimeStore(state => state.getRecordsByUserId);
   const user = useAuthStore(state => state.user);
-  const allUsers = useAuthStore(state => state.companyUsers);
-  
-  // Filtramos via useMemo para evitar loop infinito de re-render (nova ref de array)
-  const companyUsers = React.useMemo(() => {
-    return allUsers.filter(u => u.companyId === user?.companyId);
-  }, [allUsers, user?.companyId]);
-  
-  const [reports, setReports] = useState<any[]>([]);
   const router = useRouter();
+  const [reports, setReports] = useState<EmployeeReport[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Calcula os saldos baseados nos registros reais
-    const rs = companyUsers.map(user => {
-      const records = getRecordsByUserId(user.id);
-      
-      // Filtra registros apenas de HOJE para preview rápido no Dashboard
-      const todayStr = new Date().toLocaleDateString('pt-BR');
-      const todayRecords = records.filter(r => new Date(r.timestamp).toLocaleDateString('pt-BR') === todayStr);
+    if (!user?.companyId) return;
+    const load = async () => {
+      setLoading(true);
+      try {
+        // Busca todos os funcionários e todos os registros da empresa em paralelo
+        const [usersRes, recordsRes] = await Promise.all([
+          apiClient.get(`/users/${user.companyId}`),
+          apiClient.get(`/records/company/${user.companyId}`),
+        ]);
 
-      const hoursWorked = TimeBankService.calculateDailyHours(records);
-      const balance = TimeBankService.calculateBalance(hoursWorked, 8); // Baseado em 8h/dia
-      return {
-        ...user,
-        hoursWorked,
-        balance,
-        todayRecords
-      };
-    });
-    setReports(rs);
-  }, [getRecordsByUserId, companyUsers]);
+        const employees: any[] = usersRes.data;
+        const allRecords: any[] = recordsRes.data;
+
+        const todayStr = new Date().toLocaleDateString('pt-BR');
+
+        const rs: EmployeeReport[] = employees.map(emp => {
+          const empRecords = allRecords.filter(r => r.userId === emp.id);
+          const todayRecords = empRecords.filter(r =>
+            new Date(r.timestamp).toLocaleDateString('pt-BR') === todayStr
+          );
+          const hoursWorked = TimeBankService.calculateDailyHours(empRecords);
+          const balance = TimeBankService.calculateBalance(hoursWorked, 8);
+          return { ...emp, hoursWorked, balance, todayRecords };
+        });
+
+        setReports(rs);
+      } catch (e) {
+        console.error('Erro ao carregar relatórios', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [user?.companyId]);
 
   return (
     <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
-      
+
       <View style={styles.header}>
         <FileText color={brandColors.primary} size={28} />
         <Text style={styles.title}>Relatório Unificado (Mês Corrente)</Text>
       </View>
 
-      <ScrollView style={styles.listCard}>
-        {reports.map((report, idx) => (
-          <TouchableOpacity 
-            key={report.id} 
-            style={[styles.listItem, idx === reports.length - 1 && styles.noBorder]}
-            activeOpacity={0.7}
-            onPress={() => router.push(`/report/${report.id}`)}
-          >
-            <View style={styles.itemLeft}>
-              <Text style={styles.userName}>{report.name}</Text>
-              <View style={styles.roleAndTodayRow}>
-                <Text style={styles.userSubtitle}>{report.role === 'ADMIN' ? 'Admin' : 'Funcionário'}</Text>
-                {report.todayRecords.length > 0 && (
-                  <>
-                    <Text style={styles.dotSeparator}>•</Text>
-                    <Text style={styles.todayText}>
-                      Hoje: {report.todayRecords.map((r: any) => new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })).join(' \u2192 ')}
+      {loading ? (
+        <ActivityIndicator color={brandColors.primary} size="large" style={{ marginTop: 40 }} />
+      ) : (
+        <ScrollView style={styles.listCard}>
+          {reports.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhum funcionário ou registro encontrado.</Text>
+          ) : (
+            reports.map((report, idx) => (
+              <TouchableOpacity
+                key={report.id}
+                style={[styles.listItem, idx === reports.length - 1 && styles.noBorder]}
+                activeOpacity={0.7}
+                onPress={() => router.push(`/report/${report.id}`)}
+              >
+                <View style={styles.itemLeft}>
+                  <Text style={styles.userName}>{report.name}</Text>
+                  <View style={styles.roleAndTodayRow}>
+                    <Text style={styles.userSubtitle}>{report.role === 'ADMIN' ? 'Admin' : 'Funcionário'}</Text>
+                    {report.todayRecords.length > 0 && (
+                      <>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <Text style={styles.todayText}>
+                          Hoje: {report.todayRecords.map((r: any) => new Date(r.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })).join(' → ')}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.statsContainer}>
+                  <View style={styles.statBox}>
+                    <Clock color="#6b7280" size={16} />
+                    <Text style={styles.statText}>
+                      T. Geral: {TimeBankService.formatDecimalToTime(report.hoursWorked)}h
                     </Text>
-                  </>
-                )}
-              </View>
-            </View>
+                  </View>
 
-            <View style={styles.statsContainer}>
-              <View style={styles.statBox}>
-                <Clock color="#6b7280" size={16} />
-                <Text style={styles.statText}>
-                  T. Geral: {TimeBankService.formatDecimalToTime(report.hoursWorked)}h
-                </Text>
-              </View>
-              
-              <View style={[
-                styles.balanceBox, 
-                report.balance >= 0 ? styles.balancePositive : styles.balanceNegative
-              ]}>
-                <Text style={[
-                  styles.balanceText,
-                  report.balance >= 0 ? styles.textPositive : styles.textNegative
-                ]}>
-                  Saldo CLT: {TimeBankService.formatDecimalToTime(report.balance)}h
-                </Text>
-              </View>
-              
-              <ChevronRight color="#9ca3af" size={20} style={styles.arrow} />
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+                  <View style={[
+                    styles.balanceBox,
+                    report.balance >= 0 ? styles.balancePositive : styles.balanceNegative
+                  ]}>
+                    <Text style={[
+                      styles.balanceText,
+                      report.balance >= 0 ? styles.textPositive : styles.textNegative
+                    ]}>
+                      Saldo CLT: {TimeBankService.formatDecimalToTime(report.balance)}h
+                    </Text>
+                  </View>
 
+                  <ChevronRight color="#9ca3af" size={20} style={styles.arrow} />
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      )}
     </Animated.View>
   );
 }
@@ -127,6 +152,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     padding: 8,
+  },
+  emptyText: {
+    padding: 24,
+    textAlign: 'center',
+    color: '#9ca3af',
+    fontSize: 14,
   },
   listItem: {
     flexDirection: 'row',
