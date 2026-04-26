@@ -71,7 +71,7 @@ const frontendPath = path.join(__dirname, '../../dist');
 app.use(express.static(frontendPath));
 
 // Fallback para o React Router (Expo Router)
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
