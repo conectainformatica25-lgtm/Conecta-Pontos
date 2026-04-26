@@ -6,7 +6,10 @@ function bufToB64url(buf: ArrayBuffer): string {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 function b64urlToBuf(b64url: string): ArrayBuffer {
-  const base64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  let base64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -15,6 +18,10 @@ function b64urlToBuf(b64url: string): ArrayBuffer {
 
 // --- Enrollment (admin cadastra biometria do funcionário) ---
 export async function enrollBiometric(userId: string): Promise<void> {
+  if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.create) {
+    throw new Error('A biometria digital exige conexão segura (HTTPS). O dispositivo ou navegador pode não suportar.');
+  }
+
   // 1. Pega o desafio do servidor
   const optRes = await apiClient.post('/auth/webauthn/register-options', { userId });
   const options = optRes.data;
@@ -52,6 +59,10 @@ export async function enrollBiometric(userId: string): Promise<void> {
 
 // --- Login biométrico ---
 export async function loginWithBiometric(email: string): Promise<any> {
+  if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.get) {
+    throw new Error('Biometria indisponível: exige conexão segura (HTTPS) e suporte do navegador.');
+  }
+
   // 1. Pega as opções de autenticação
   const optRes = await apiClient.post('/auth/webauthn/auth-options', { email });
   const options = optRes.data;
