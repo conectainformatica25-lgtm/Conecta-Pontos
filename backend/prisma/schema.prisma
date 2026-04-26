@@ -7,12 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
 model User {
   id        String       @id @default(uuid())
   email     String       @unique
   name      String
+  password  String
   role      String       @default("EMPLOYEE")
   companyId String
+  company   Company      @relation(fields: [companyId], references: [id])
   records   TimeRecord[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt

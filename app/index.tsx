@@ -1,34 +1,41 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, Alert } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { Clock, Eye, EyeOff } from 'lucide-react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { useRouter } from 'expo-router';
+import { apiClient } from '../src/services/api/apiClient';
 
 const { width } = Dimensions.get('window');
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   
-  const login = useAuthStore(state => state.login);
+  const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
 
-  const handleLogin = () => {
-    if (!username.trim()) {
-      Alert.alert('Erro', 'Por favor, digite seu usuário.');
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Erro', 'Por favor, preencha e-mail e senha.');
       return;
     }
     
-    const success = login(username);
-    if (!success) {
-      Alert.alert('Acesso Negado', 'Usuário não encontrado na base de dados.');
-      return;
+    setLoading(true);
+    try {
+      const response = await apiClient.post('/auth/login', { email: email.trim().toLowerCase(), password });
+      const user = response.data;
+      loginStore(user);
+      router.replace('/dashboard');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Não foi possível fazer login. Verifique sua conexão.';
+      Alert.alert('Acesso Negado', msg);
+    } finally {
+      setLoading(false);
     }
-    
-    router.replace('/dashboard');
   };
 
   return (
@@ -50,14 +57,15 @@ export default function LoginScreen() {
           <Text style={styles.welcomeSubtitle}>Faça login para continuar</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Usuário</Text>
+            <Text style={styles.label}>E-mail</Text>
             <TextInput
               style={styles.input}
-              placeholder="Digite seu usuário"
+              placeholder="Digite seu e-mail"
               placeholderTextColor="#9ca3af"
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
+              keyboardType="email-address"
             />
           </View>
 
@@ -85,8 +93,12 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin} activeOpacity={0.8}>
-            <Text style={styles.buttonText}>Entrar</Text>
+          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} activeOpacity={0.8} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color={brandColors.white} />
+            ) : (
+              <Text style={styles.buttonText}>Entrar</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.registerContainer}>
@@ -202,6 +214,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: brandColors.white,

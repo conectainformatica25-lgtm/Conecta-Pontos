@@ -1,28 +1,44 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Building2 } from 'lucide-react-native';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
+import { apiClient } from '../src/services/api/apiClient';
 
 export default function RegisterCompanyScreen() {
   const [companyName, setCompanyName] = useState('');
   const [adminName, setAdminName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   
-  const registerCompanyAndAdmin = useAuthStore(state => state.registerCompanyAndAdmin);
+  const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
 
-  const handleRegister = () => {
-    if (!companyName.trim() || !adminName.trim() || !password.trim()) {
+  const handleRegister = async () => {
+    if (!companyName.trim() || !adminName.trim() || !email.trim() || !password.trim()) {
       Alert.alert('Erro', 'Preencha todos os campos.');
       return;
     }
 
-    // Registra a nova empresa criando um UUID único de banco simulado
-    registerCompanyAndAdmin(companyName, adminName);
-    router.replace('/dashboard');
+    setLoading(true);
+    try {
+      const response = await apiClient.post('/auth/register', {
+        companyName: companyName.trim(),
+        adminName: adminName.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      loginStore(response.data);
+      router.replace('/dashboard');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Não foi possível criar a conta. Tente novamente.';
+      Alert.alert('Erro no Cadastro', msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -67,6 +83,19 @@ export default function RegisterCompanyScreen() {
           </View>
 
           <View style={styles.inputGroup}>
+            <Text style={styles.label}>E-mail de Acesso</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="seu@email.com"
+              placeholderTextColor="#9ca3af"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
             <Text style={styles.label}>Senha do Sistema</Text>
             <TextInput
               style={styles.input}
@@ -78,8 +107,12 @@ export default function RegisterCompanyScreen() {
             />
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleRegister} activeOpacity={0.8}>
-            <Text style={styles.buttonText}>Finalizar Cadastro</Text>
+          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleRegister} activeOpacity={0.8} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color={brandColors.white} />
+            ) : (
+              <Text style={styles.buttonText}>Finalizar Cadastro</Text>
+            )}
           </TouchableOpacity>
 
         </Animated.View>
@@ -170,6 +203,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: brandColors.white,
