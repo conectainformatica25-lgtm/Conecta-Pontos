@@ -4,13 +4,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Company {
   id         String   @id @default(uuid())
   name       String
   authMethod String   @default("PASSWORD") // PASSWORD | FINGERPRINT | FACE
+  isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   users      User[]
 }

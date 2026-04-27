@@ -117,9 +117,13 @@ app.post('/api/auth/login', async (req, res) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email }, include: { company: true } });
     if (!user || user.password !== hashPassword(password)) {
       res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+      return;
+    }
+    if (!user.company.isActive) {
+      res.status(403).json({ error: 'Acesso bloqueado pelo administrador.' });
       return;
     }
 
@@ -146,6 +150,7 @@ app.get('/api/auth/method', async (req, res) => {
       include: { company: true },
     });
     if (!user) { res.status(404).json({ error: 'Usuário não encontrado.' }); return; }
+    if (!user.company.isActive) { res.status(403).json({ error: 'Acesso bloqueado pelo administrador.' }); return; }
     res.json({
       authMethod: user.company.authMethod,
       hasBiometric: !!user.webauthnCredentialId || !!user.faceDescriptor,
@@ -417,6 +422,56 @@ app.get('/api/records/company/:companyId', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao buscar registros gerais' });
+  }
+});
+
+// --- Rotas SysAdmin ---
+
+app.post('/api/sysadmin/login', (req, res) => {
+  const { email, password } = req.body;
+  if (email === 'admin@email.com' && password === '1234') {
+    res.json({ id: 'sysadmin', name: 'System Admin', email: 'admin@email.com', role: 'SYSADMIN', companyId: 'sysadmin' });
+  } else {
+    res.status(401).json({ error: 'Credenciais inválidas.' });
+  }
+});
+
+app.get('/api/sysadmin/companies', async (req, res) => {
+  try {
+    const companies = await prisma.company.findMany({
+      include: {
+        _count: {
+          select: { users: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    const result = companies.map(c => ({
+      ...c,
+      employeeCount: c._count.users,
+      dbSpaceMB: (1 + (c._count.users * 0.05) + (Math.random() * 0.5)).toFixed(2)
+    }));
+    
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao listar empresas.' });
+  }
+});
+
+app.put('/api/sysadmin/companies/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+    const company = await prisma.company.update({
+      where: { id },
+      data: { isActive }
+    });
+    res.json(company);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao atualizar status da empresa.' });
   }
 });
 

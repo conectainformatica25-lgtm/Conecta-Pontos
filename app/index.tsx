@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { Clock, Eye, EyeOff, Fingerprint, Scan, ArrowRight } from 'lucide-react-native';
+import { Clock, Eye, EyeOff, Fingerprint, Scan, ArrowRight, Settings } from 'lucide-react-native';
 import Animated, { FadeInUp, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
@@ -141,6 +141,9 @@ export default function LoginScreen() {
         onClose={() => setShowFaceCamera(false)}
       />
       <SafeAreaView style={styles.container}>
+        <TouchableOpacity style={styles.sysadminBtn} onPress={() => router.push('/sysadmin/login')}>
+          <Settings size={20} color="#ffffff" opacity={0.3} />
+        </TouchableOpacity>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.content}
@@ -280,6 +283,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: brandColors.primary },
+  sysadminBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10 },
   content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   header: { alignItems: 'center', marginBottom: 40 },
   iconContainer: {
