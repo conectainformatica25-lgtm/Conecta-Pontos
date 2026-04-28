@@ -82,17 +82,31 @@ export function ClockPanel() {
         </Text>
       </View>
 
-      <View style={styles.actionGrid}>
-        {error && <Text style={{marginLeft: 16, color: 'red', width: '100%', marginBottom: 10}}>{error}</Text>}
-        {isLoading ? <Text style={{marginLeft: 16, color: '#6b7280'}}>Carregando seus registros no Banco de Dados...</Text> : (
-          <>
-            <View style={styles.btnWrapper}>{renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}</View>
-            <View style={styles.btnWrapper}>{renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}</View>
-            <View style={styles.btnWrapper}>{renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}</View>
-            <View style={styles.btnWrapper}>{renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}</View>
-          </>
-        )}
-      </View>
+      {error && <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>}
+      {isLoading ? (
+        <Text style={{ color: '#6b7280' }}>Carregando seus registros no Banco de Dados...</Text>
+      ) : (
+        <>
+          {/* Linha 1: Entrada + Início do Almoço */}
+          <View style={styles.row}>
+            <View style={styles.cell}>
+              {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
+            </View>
+            <View style={styles.cell}>
+              {renderButton('SAIDA_ALMOCO', 'Início do\nAlmoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
+            </View>
+          </View>
+          {/* Linha 2: Retorno do Almoço + Saída */}
+          <View style={styles.row}>
+            <View style={styles.cell}>
+              {renderButton('RETORNO_ALMOCO', 'Retorno do\nAlmoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
+            </View>
+            <View style={styles.cell}>
+              {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
+            </View>
+          </View>
+        </>
+      )}
     </Animated.View>
   );
 }
@@ -138,27 +152,25 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
     marginTop: 8,
   },
-  actionGrid: {
+  // Layout 2x2 com linhas explícitas — funciona em qualquer tela
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -8, // compensate for wrapper padding
+    marginBottom: 12,
   },
-  btnWrapper: {
-    width: '50%',
-    paddingHorizontal: 8,
-    marginBottom: 16,
+  cell: {
+    flex: 1,
+    marginHorizontal: 6,
   },
   actionBtn: {
-    flex: 1, // fill the wrapper
     backgroundColor: '#f9fafb',
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 20,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    overflow: 'hidden',
+    minHeight: 110,
   },
   actionBtnActive: {
     backgroundColor: '#ecfdf5',
@@ -169,10 +181,10 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   actionText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#10b981',
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: 10,
     textAlign: 'center',
   },
   textDisabled: {
