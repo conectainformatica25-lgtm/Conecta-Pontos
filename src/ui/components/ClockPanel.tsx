@@ -86,10 +86,10 @@ export function ClockPanel() {
         {error && <Text style={{marginLeft: 16, color: 'red', width: '100%', marginBottom: 10}}>{error}</Text>}
         {isLoading ? <Text style={{marginLeft: 16, color: '#6b7280'}}>Carregando seus registros no Banco de Dados...</Text> : (
           <>
-            {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
-            {renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
-            {renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
-            {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
+            <View style={styles.btnWrapper}>{renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}</View>
+            <View style={styles.btnWrapper}>{renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}</View>
+            <View style={styles.btnWrapper}>{renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}</View>
+            <View style={styles.btnWrapper}>{renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}</View>
           </>
         )}
       </View>
@@ -141,16 +141,21 @@ const styles = StyleSheet.create({
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    marginHorizontal: -8, // compensate for wrapper padding
+  },
+  btnWrapper: {
+    width: '50%',
+    paddingHorizontal: 8,
+    marginBottom: 16,
   },
   actionBtn: {
+    flex: 1, // fill the wrapper
     backgroundColor: '#f9fafb',
-    width: '47%',
-    marginBottom: 16,
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#e5e7eb',
     overflow: 'hidden',
