@@ -142,16 +142,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 16,
   },
   actionBtn: {
     backgroundColor: '#f9fafb',
-    width: '48%',
+    width: '47%',
+    marginBottom: 16,
     borderRadius: 16,
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    overflow: 'hidden',
   },
   actionBtnActive: {
     backgroundColor: '#ecfdf5',
@@ -162,7 +164,7 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   actionText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#10b981',
     fontWeight: '600',
     marginTop: 12,
@@ -172,8 +174,9 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   actionSubtext: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#d1d5db',
     marginTop: 4,
+    textAlign: 'center',
   },
 });
