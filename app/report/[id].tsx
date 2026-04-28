@@ -159,16 +159,16 @@ const styles = StyleSheet.create({
     backgroundColor: brandColors.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingVertical: 16,
     paddingTop: Platform.OS === 'android' ? 40 : 16,
   },
   backBtn: { padding: 8, marginRight: 16 },
   headerTitle: { color: brandColors.white, fontSize: 20, fontWeight: 'bold' },
-  scrollContent: { padding: 24, alignItems: 'center' },
+  scrollContent: { padding: 16, alignItems: 'center' },
   userCard: {
     backgroundColor: brandColors.white,
-    padding: 24,
+    padding: 16,
     borderRadius: 16,
     width: '100%',
     maxWidth: 600,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
   timelineGroup: { gap: 16 },
   timelineCard: {
-    backgroundColor: brandColors.white, padding: 24, borderRadius: 16,
+    backgroundColor: brandColors.white, padding: 16, borderRadius: 16,
     borderWidth: 1, borderColor: '#e5e7eb',
   },
   dayHeader: {

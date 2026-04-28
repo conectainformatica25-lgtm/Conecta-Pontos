@@ -99,7 +99,7 @@ export function ClockPanel() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 32,
+    padding: 16,
     maxWidth: 800,
     width: '100%',
     alignSelf: 'center',
@@ -142,13 +142,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
+    rowGap: 16,
   },
   actionBtn: {
     backgroundColor: '#f9fafb',
     width: '48%',
     borderRadius: 16,
-    padding: 32,
+    padding: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -162,10 +162,11 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   actionText: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#10b981',
     fontWeight: '600',
     marginTop: 12,
+    textAlign: 'center',
   },
   textDisabled: {
     color: '#9ca3af',

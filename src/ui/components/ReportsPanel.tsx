@@ -83,7 +83,7 @@ export function ReportsPanel() {
                 onPress={() => router.push(`/report/${report.id}`)}
               >
                 <View style={styles.itemLeft}>
-                  <Text style={styles.userName}>{report.name}</Text>
+                  <Text style={styles.userName} numberOfLines={1}>{report.name}</Text>
                   <View style={styles.roleAndTodayRow}>
                     <Text style={styles.userSubtitle}>{report.role === 'ADMIN' ? 'Admin' : 'Funcionário'}</Text>
                     {report.todayRecords.length > 0 && (
@@ -130,7 +130,7 @@ export function ReportsPanel() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 32,
+    padding: 16,
     maxWidth: 800,
     width: '100%',
     alignSelf: 'center',
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   statBox: {
     flexDirection: 'row',
