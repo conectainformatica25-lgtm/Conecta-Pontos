@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { Clock, LogIn, Coffee, ArrowLeftRight, LogOut } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions } from 'react-native';
+import { LogIn, Coffee, ArrowLeftRight, LogOut } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { brandColors } from '../themes/colors.theme';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -8,6 +8,7 @@ import { useTimeStore } from '../../store/useTimeStore';
 import { RecordType } from '../../domain/entities/TimeRecord';
 
 export function ClockPanel() {
+  const { width: screenWidth } = useWindowDimensions();
   const user = useAuthStore(state => state.user);
   const addRecord = useTimeStore(state => state.addRecord);
   const getTodayRecordsByUserId = useTimeStore(state => state.getTodayRecordsByUserId);
@@ -37,6 +38,15 @@ export function ClockPanel() {
     Alert.alert('Sucesso', 'Ponto registrado com sucesso!');
   };
 
+  // Calcula largura de cada botão em pixels absolutos
+  // containerPadding = 16 de cada lado = 32 total
+  // gapBetweenButtons = 12
+  // btnWidth = (screenWidth - 32 - 12) / 2
+  const containerPadding = 32;
+  const gap = 12;
+  const maxContainerWidth = Math.min(screenWidth, 800);
+  const btnWidth = (maxContainerWidth - containerPadding - gap) / 2;
+
   const renderButton = (
     type: RecordType,
     label: string,
@@ -50,14 +60,15 @@ export function ClockPanel() {
       <TouchableOpacity
         style={[
           styles.actionBtn,
+          { width: btnWidth },
           isActive && !isDone && styles.actionBtnActive,
-          isDone && styles.actionBtnDone
+          isDone && styles.actionBtnDone,
         ]}
         disabled={disabled}
         onPress={() => handlePonto(type)}
         activeOpacity={0.7}
       >
-        <Icon color={disabled ? '#9ca3af' : '#10b981'} size={32} />
+        <Icon color={disabled ? '#9ca3af' : '#10b981'} size={28} />
         <Text style={[styles.actionText, disabled && styles.textDisabled]}>
           {label}
         </Text>
@@ -84,28 +95,20 @@ export function ClockPanel() {
 
       {error && <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>}
       {isLoading ? (
-        <Text style={{ color: '#6b7280' }}>Carregando seus registros no Banco de Dados...</Text>
+        <Text style={{ color: '#6b7280' }}>Carregando...</Text>
       ) : (
-        <>
-          {/* Linha 1: Entrada + Início do Almoço */}
-          <View style={styles.row}>
-            <View style={styles.cell}>
-              {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
-            </View>
-            <View style={styles.cell}>
-              {renderButton('SAIDA_ALMOCO', 'Início do\nAlmoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
-            </View>
+        <View style={styles.grid}>
+          {/* Linha 1 */}
+          <View style={styles.gridRow}>
+            {renderButton('ENTRADA', 'Entrada', LogIn, !hasEntrada, hasEntrada)}
+            {renderButton('SAIDA_ALMOCO', 'Início do Almoço', Coffee, hasEntrada && !hasSaidaAlmoco, hasSaidaAlmoco)}
           </View>
-          {/* Linha 2: Retorno do Almoço + Saída */}
-          <View style={styles.row}>
-            <View style={styles.cell}>
-              {renderButton('RETORNO_ALMOCO', 'Retorno do\nAlmoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
-            </View>
-            <View style={styles.cell}>
-              {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
-            </View>
+          {/* Linha 2 */}
+          <View style={styles.gridRow}>
+            {renderButton('RETORNO_ALMOCO', 'Retorno do Almoço', ArrowLeftRight, hasSaidaAlmoco && !hasRetornoAlmoco, hasRetornoAlmoco)}
+            {renderButton('SAIDA', 'Saída', LogOut, (hasEntrada && !hasSaidaAlmoco) || hasRetornoAlmoco, hasSaida)}
           </View>
-        </>
+        </View>
       )}
     </Animated.View>
   );
@@ -119,27 +122,24 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   salutation: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#111827',
   },
   instruction: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#6b7280',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   clockCard: {
     backgroundColor: brandColors.white,
-    padding: 40,
+    paddingVertical: 32,
+    paddingHorizontal: 16,
     borderRadius: 16,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
   },
   clockText: {
     fontSize: 48,
@@ -147,19 +147,19 @@ const styles = StyleSheet.create({
     color: brandColors.primary,
   },
   dateText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#6b7280',
     textTransform: 'capitalize',
     marginTop: 8,
+    textAlign: 'center',
   },
-  // Layout 2x2 com linhas explícitas — funciona em qualquer tela
-  row: {
+  // Grid com linhas explícitas
+  grid: {
+    gap: 12,
+  },
+  gridRow: {
     flexDirection: 'row',
-    marginBottom: 12,
-  },
-  cell: {
-    flex: 1,
-    marginHorizontal: 6,
+    gap: 12,
   },
   actionBtn: {
     backgroundColor: '#f9fafb',
