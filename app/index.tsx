@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { Clock, Eye, EyeOff, Fingerprint, Scan, ArrowRight, Settings } from 'lucide-react-native';
+import { Clock, Eye, EyeOff, Fingerprint, Scan, ArrowRight, Settings, Download } from 'lucide-react-native';
 import Animated, { FadeInUp, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { brandColors } from '../src/ui/themes/colors.theme';
 import { useAuthStore } from '../src/store/useAuthStore';
@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { apiClient } from '../src/services/api/apiClient';
 import { loginWithBiometric } from '../src/services/api/webauthn';
 import { FaceCameraModal } from '../src/ui/components/FaceCameraModal';
+import { usePWAInstall } from '../src/hooks/usePWAInstall';
 
 type Step = 'EMAIL' | 'PASSWORD' | 'BIOMETRIC';
 
@@ -22,6 +23,7 @@ export default function LoginScreen() {
 
   const loginStore = useAuthStore(state => state.login);
   const router = useRouter();
+  const { isInstallable, promptInstall } = usePWAInstall();
 
   // Passo 1: detecta o método da empresa pelo e-mail
   const handleEmailNext = async () => {
@@ -141,6 +143,12 @@ export default function LoginScreen() {
         onClose={() => setShowFaceCamera(false)}
       />
       <SafeAreaView style={styles.container}>
+        {isInstallable && (
+          <TouchableOpacity style={styles.installBtn} onPress={promptInstall}>
+            <Download size={20} color="#ffffff" />
+            <Text style={styles.installText}>Instalar App</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.sysadminBtn} onPress={() => router.push('/sysadmin/login')}>
           <Settings size={20} color="#ffffff" opacity={0.3} />
         </TouchableOpacity>
@@ -284,6 +292,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: brandColors.primary },
   sysadminBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10 },
+  installBtn: { position: 'absolute', top: 50, left: 20, zIndex: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
+  installText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
   content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   header: { alignItems: 'center', marginBottom: 40 },
   iconContainer: {

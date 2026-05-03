@@ -1,14 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Clock, LogOut } from 'lucide-react-native';
+import { Download, Clock, LogOut } from 'lucide-react-native';
 import { brandColors } from '../themes/colors.theme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useRouter } from 'expo-router';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 export function DashboardHeader() {
   const user = useAuthStore(state => state.user);
   const logout = useAuthStore(state => state.logout);
   const router = useRouter();
+  const { isInstallable, promptInstall } = usePWAInstall();
 
   const handleLogout = () => {
     logout();
@@ -23,6 +25,12 @@ export function DashboardHeader() {
       </View>
 
       <View style={styles.profileContainer}>
+        {isInstallable && (
+          <TouchableOpacity style={styles.installBtn} onPress={promptInstall}>
+            <Download color={brandColors.white} size={16} />
+            <Text style={styles.installText}>Instalar App</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.userName}>{user?.name || 'Visitante'}</Text>
         {user?.role === 'ADMIN' && (
           <View style={styles.badge}>
@@ -63,6 +71,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  installBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  installText: {
+    color: brandColors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
   userName: {
     color: brandColors.white,
