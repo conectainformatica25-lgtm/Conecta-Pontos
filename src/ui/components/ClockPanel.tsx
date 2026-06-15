@@ -6,17 +6,22 @@ import { brandColors } from '../themes/colors.theme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTimeStore } from '../../store/useTimeStore';
 import { RecordType } from '../../domain/entities/TimeRecord';
+import { apiClient } from '../../services/api/apiClient';
+import { FaceCameraModal } from './FaceCameraModal';
 
 export function ClockPanel() {
   const { width: screenWidth } = useWindowDimensions();
   const user = useAuthStore(state => state.user);
+  const records = useTimeStore(state => state.records);
   const addRecord = useTimeStore(state => state.addRecord);
-  const getTodayRecordsByUserId = useTimeStore(state => state.getTodayRecordsByUserId);
   const fetchRecordsByUserId = useTimeStore(state => state.fetchRecordsByUserId);
   const isLoading = useTimeStore(state => state.isLoading);
   const error = useTimeStore(state => state.error);
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [pendingType, setPendingType] = useState<RecordType | null>(null);
+  const [authMethod, setAuthMethod] = useState<string>('PASSWORD');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -26,7 +31,24 @@ export function ClockPanel() {
     return () => clearInterval(timer);
   }, [user?.id, fetchRecordsByUserId]);
 
-  const todayRecords = getTodayRecordsByUserId(user?.id || '');
+  useEffect(() => {
+    const loadCompany = async () => {
+      if (!user?.companyId) return;
+      try {
+        const res = await apiClient.get(`/company/${user.companyId}`);
+        setAuthMethod(res.data.authMethod);
+      } catch (e) {
+        console.error('Erro ao carregar método de autenticação', e);
+      }
+    };
+    loadCompany();
+  }, [user?.companyId]);
+
+  const todayStr = new Date().toLocaleDateString('pt-BR');
+  const todayRecords = records.filter(r => 
+    r.userId === user?.id && 
+    new Date(r.timestamp).toLocaleDateString('pt-BR') === todayStr
+  );
   const hasEntrada = todayRecords.some(r => r.type === 'ENTRADA');
   const hasSaidaAlmoco = todayRecords.some(r => r.type === 'SAIDA_ALMOCO');
   const hasRetornoAlmoco = todayRecords.some(r => r.type === 'RETORNO_ALMOCO');
@@ -34,8 +56,22 @@ export function ClockPanel() {
 
   const handlePonto = (tipo: RecordType) => {
     if (!user) return;
-    addRecord(user.id, user.companyId, tipo);
-    Alert.alert('Sucesso', 'Ponto registrado com sucesso!');
+    
+    if (authMethod === 'FACE') {
+      setPendingType(tipo);
+      setShowFaceCamera(true);
+    } else {
+      executePonto(tipo);
+    }
+  };
+
+  const executePonto = async (tipo: RecordType, photoBase64?: string) => {
+    try {
+      await addRecord(user!.id, user!.companyId, tipo, photoBase64);
+      Alert.alert('✅ Sucesso', 'Ponto registrado com sucesso!');
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível registrar o ponto.');
+    }
   };
 
   // Calcula largura de cada botão em pixels absolutos
@@ -80,7 +116,24 @@ export function ClockPanel() {
   };
 
   return (
-    <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
+    <>
+      <FaceCameraModal
+        visible={showFaceCamera}
+        mode="login"
+        employeeName={user?.name}
+        onCapture={async (photoBase64) => {
+          setShowFaceCamera(false);
+          if (pendingType) {
+            await executePonto(pendingType, photoBase64);
+            setPendingType(null);
+          }
+        }}
+        onClose={() => {
+          setShowFaceCamera(false);
+          setPendingType(null);
+        }}
+      />
+      <Animated.View entering={FadeInUp.duration(600)} style={styles.container}>
       <Text style={styles.salutation}>Olá, {user?.name}!</Text>
       <Text style={styles.instruction}>Registre seu ponto abaixo</Text>
 
@@ -111,6 +164,7 @@ export function ClockPanel() {
         </View>
       )}
     </Animated.View>
+    </>
   );
 }
 

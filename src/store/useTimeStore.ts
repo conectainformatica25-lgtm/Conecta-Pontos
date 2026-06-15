@@ -6,7 +6,7 @@ interface TimeStore {
   records: TimeRecord[];
   isLoading: boolean;
   error: string | null;
-  addRecord: (userId: string, companyId: string, type: RecordType) => Promise<void>;
+  addRecord: (userId: string, companyId: string, type: RecordType, photo?: string) => Promise<void>;
   fetchRecordsByUserId: (userId: string) => Promise<void>;
   fetchRecordsByCompanyId: (companyId: string) => Promise<void>;
   getRecordsByUserId: (userId: string) => TimeRecord[];
@@ -19,10 +19,10 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
   isLoading: false,
   error: null,
   
-  addRecord: async (userId, companyId, type) => {
+  addRecord: async (userId, companyId, type, photo) => {
     try {
       set({ isLoading: true, error: null });
-      const response = await apiClient.post('/records', { userId, companyId, type });
+      const response = await apiClient.post('/records', { userId, companyId, type, photo });
       set((state) => ({
         records: [response.data, ...state.records],
         isLoading: false
@@ -65,10 +65,10 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
   },
 
   getTodayRecordsByUserId: (userId) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('pt-BR');
     return get().records.filter(r => 
       r.userId === userId && 
-      r.timestamp.startsWith(todayStr)
+      new Date(r.timestamp).toLocaleDateString('pt-BR') === todayStr
     );
   },
 

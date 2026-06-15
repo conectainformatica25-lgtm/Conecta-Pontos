@@ -6,6 +6,7 @@ export interface TimeRecord {
   companyId: string;
   type: RecordType;
   timestamp: string; // ISO 8601 string
+  photo?: string;    // base64 image taken at the moment of clock-in
 }
 
 export interface DailyRecord {

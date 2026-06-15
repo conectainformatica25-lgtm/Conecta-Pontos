@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import crypto from 'crypto';
+import webpush from 'web-push';
 import { PrismaClient } from '@prisma/client';
 
 const app = express();
@@ -9,9 +10,19 @@ const prisma = new PrismaClient();
 const challengeStore = new Map<string, string>(); // userId -> challenge
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// --- Utilitários ---
+// ── Configuração VAPID (Web Push) ───────────────────────────────────────────
+const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY  || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_MAILTO      = process.env.VAPID_MAILTO      || 'mailto:admin@conectapontos.com';
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+// ── Utilitários ──────────────────────────────────────────────────────────────
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
@@ -28,7 +39,105 @@ function base64urlToBuf(s: string): Buffer {
   return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 }
 
-// --- Rotas de Auth ---
+/** Mapa de tipos de ponto para labels em português */
+const TYPE_LABELS: Record<string, string> = {
+  ENTRADA:        '🟢 Entrada',
+  SAIDA_ALMOCO:   '🟡 Início do Almoço',
+  RETORNO_ALMOCO: '🔵 Retorno do Almoço',
+  SAIDA:          '🔴 Saída',
+};
+
+/**
+ * Envia notificação push para todos os admins da empresa
+ * quando um funcionário bate ponto.
+ */
+async function notifyAdmins(
+  companyId: string,
+  employeeName: string,
+  recordType: string,
+  timestamp: Date
+): Promise<void> {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+
+  try {
+    // Busca todos os admins da empresa com subscriptions push
+    const admins = await prisma.user.findMany({
+      where: { companyId, role: 'ADMIN' },
+      include: { pushSubscriptions: true },
+    });
+
+    const timeStr = timestamp.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo',
+    });
+
+    const payload = JSON.stringify({
+      title: `${TYPE_LABELS[recordType] || recordType} — ${employeeName}`,
+      body: `Horário: ${timeStr}`,
+      employeeName,
+      recordType,
+      timestamp: timeStr,
+      companyId,
+    });
+
+    // Envia push para cada subscription de cada admin
+    const sendPromises = admins.flatMap((admin) =>
+      admin.pushSubscriptions.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload
+          );
+        } catch (err: any) {
+          // Se subscription inválida (410 Gone), remove do banco
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+          }
+          console.error(`Push falhou para ${sub.endpoint.slice(0, 40)}:`, err.message);
+        }
+      })
+    );
+
+    await Promise.allSettled(sendPromises);
+  } catch (err) {
+    console.error('Erro ao enviar notificações push:', err);
+  }
+}
+
+// ── Rota: Chave pública VAPID ───────────────────────────────────────────────
+app.get('/api/push/vapid-public-key', (req, res) => {
+  if (!VAPID_PUBLIC_KEY) {
+    res.status(503).json({ error: 'Push notifications não configuradas.' });
+    return;
+  }
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// ── Rota: Registrar subscription push ──────────────────────────────────────
+app.post('/api/push/subscribe', async (req, res) => {
+  try {
+    const { userId, endpoint, p256dh, auth } = req.body;
+    if (!userId || !endpoint || !p256dh || !auth) {
+      res.status(400).json({ error: 'Dados de subscription incompletos.' });
+      return;
+    }
+
+    // Upsert: atualiza se o endpoint já existe, cria se não existe
+    await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      update: { userId, p256dh, auth },
+      create: { userId, endpoint, p256dh, auth },
+    });
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao salvar subscription.' });
+  }
+});
+
+// ── Rotas de Auth ────────────────────────────────────────────────────────────
 
 // Registrar empresa + admin
 app.post('/api/auth/register', async (req, res) => {
@@ -72,7 +181,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Buscar dados da empresa (incluindo authMethod)
+// Buscar dados da empresa
 app.get('/api/company/:companyId', async (req, res) => {
   try {
     const { companyId } = req.params;
@@ -140,7 +249,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Buscar método de autenticação pelo e-mail (para o login se adaptar)
+// Buscar método de autenticação pelo e-mail
 app.get('/api/auth/method', async (req, res) => {
   try {
     const email = req.query.email as string;
@@ -181,7 +290,7 @@ app.post('/api/auth/face-enroll', async (req, res) => {
   }
 });
 
-// Login facial — recebe a foto do rosto e retorna o usuário
+// Login facial
 app.post('/api/auth/face-login', async (req, res) => {
   try {
     const { email } = req.body;
@@ -190,7 +299,6 @@ app.post('/api/auth/face-login', async (req, res) => {
       res.status(404).json({ error: 'Dados faciais não cadastrados para este usuário.' });
       return;
     }
-    // Retorna o faceDescriptor para o cliente comparar (o cliente faz a comparação)
     res.json({
       faceDescriptor: user.faceDescriptor,
       userId: user.id,
@@ -255,9 +363,8 @@ app.get('/api/users/:companyId', async (req, res) => {
   }
 });
 
-// --- Rotas WebAuthn (Biometria) ---
+// ── Rotas WebAuthn (Biometria) ───────────────────────────────────────────────
 
-// 1. Gerar opções de cadastro biométrico
 app.post('/api/auth/webauthn/register-options', async (req, res) => {
   try {
     const { userId } = req.body;
@@ -287,23 +394,19 @@ app.post('/api/auth/webauthn/register-options', async (req, res) => {
   }
 });
 
-// 2. Verificar e salvar cadastro biométrico
 app.post('/api/auth/webauthn/register-verify', async (req, res) => {
   try {
     const { userId, credential } = req.body;
     const expectedChallenge = challengeStore.get(userId);
     if (!expectedChallenge) { res.status(400).json({ error: 'Challenge expirado. Tente novamente.' }); return; }
 
-    // Decode clientDataJSON to verify challenge and origin
     const clientDataJSON = JSON.parse(base64urlToBuf(credential.response.clientDataJSON).toString('utf8'));
     if (clientDataJSON.challenge !== expectedChallenge) {
       res.status(400).json({ error: 'Challenge não confere.' }); return;
     }
 
-    // Store the credential ID and public key (attestationObject contains the public key)
-    // For simplicity we store the credentialId for future auth matching
-    const credentialId = credential.id; // already base64url from browser
-    const publicKeyB64 = credential.response.attestationObject; // store raw for verification
+    const credentialId = credential.id;
+    const publicKeyB64 = credential.response.attestationObject;
 
     await prisma.user.update({
       where: { id: userId },
@@ -321,7 +424,6 @@ app.post('/api/auth/webauthn/register-verify', async (req, res) => {
   }
 });
 
-// 3. Gerar opções de autenticação biométrica (login)
 app.post('/api/auth/webauthn/auth-options', async (req, res) => {
   try {
     const { email } = req.body;
@@ -350,7 +452,6 @@ app.post('/api/auth/webauthn/auth-options', async (req, res) => {
   }
 });
 
-// 4. Verificar autenticação biométrica (login)
 app.post('/api/auth/webauthn/auth-verify', async (req, res) => {
   try {
     const { userId, credential } = req.body;
@@ -362,12 +463,10 @@ app.post('/api/auth/webauthn/auth-verify', async (req, res) => {
     const expectedChallenge = challengeStore.get(userId);
     if (!expectedChallenge) { res.status(400).json({ error: 'Challenge expirado.' }); return; }
 
-    // Verify the credential ID matches
     if (credential.id !== user.webauthnCredentialId) {
       res.status(401).json({ error: 'Credencial biométrica não reconhecida.' }); return;
     }
 
-    // Verify the challenge in clientDataJSON
     const clientDataJSON = JSON.parse(base64urlToBuf(credential.response.clientDataJSON).toString('utf8'));
     if (clientDataJSON.challenge !== expectedChallenge) {
       res.status(401).json({ error: 'Challenge biométrico inválido.' }); return;
@@ -381,15 +480,28 @@ app.post('/api/auth/webauthn/auth-verify', async (req, res) => {
   }
 });
 
-// --- Rotas de Ponto ---
+// ── Rotas de Ponto ───────────────────────────────────────────────────────────
 
 app.post('/api/records', async (req, res) => {
   try {
-    const { userId, companyId, type } = req.body;
-    const record = await prisma.timeRecord.create({
-      data: { userId, companyId, type },
+    const { userId, companyId, type, photo } = req.body;
+
+    // Busca o nome do funcionário para a notificação
+    const employee = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
     });
+
+    const record = await prisma.timeRecord.create({
+      data: { userId, companyId, type, photo },
+    });
+
     res.status(201).json(record);
+
+    // Envia notificação push para os admins (em background, não bloqueia a resposta)
+    if (employee) {
+      notifyAdmins(companyId, employee.name, type, record.timestamp).catch(console.error);
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao registrar ponto' });
@@ -410,6 +522,150 @@ app.get('/api/records/:userId', async (req, res) => {
   }
 });
 
+app.get('/api/records/export/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate, rangeOnly } = req.query;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { company: true }
+    });
+
+    if (!user) {
+      res.status(404).send('Usuário não encontrado.');
+      return;
+    }
+
+    const records = await prisma.timeRecord.findMany({
+      where: { userId },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    // Agrupa por dia
+    const grouped: Record<string, typeof records> = {};
+    for (const r of records) {
+      const dateStr = new Date(r.timestamp).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      if (!grouped[dateStr]) {
+        grouped[dateStr] = [];
+      }
+      grouped[dateStr].push(r);
+    }
+
+    // Filtra por período
+    let entries = Object.entries(grouped);
+    if (rangeOnly === 'true') {
+      entries = entries.filter(([dateStr]) => {
+        const [day, month, year] = dateStr.split('/').map(Number);
+        const itemDate = new Date(year, month - 1, day);
+        itemDate.setHours(0, 0, 0, 0);
+
+        if (startDate) {
+          const start = new Date(startDate as string + 'T00:00:00');
+          if (itemDate < start) return false;
+        }
+        if (endDate) {
+          const end = new Date(endDate as string + 'T00:00:00');
+          if (itemDate > end) return false;
+        }
+        return true;
+      });
+    }
+
+    // Ordena ascendente
+    entries.sort(([dateStrA], [dateStrB]) => {
+      const [dA, mA, yA] = dateStrA.split('/').map(Number);
+      const [dB, mB, yB] = dateStrB.split('/').map(Number);
+      return new Date(yA, mA - 1, dA).getTime() - new Date(yB, mB - 1, dB).getTime();
+    });
+
+    const calculateDailyHours = (dayRecords: typeof records): number => {
+      if (dayRecords.length < 2) return 0;
+      let totalMs = 0;
+      const entrada = dayRecords.find(r => r.type === 'ENTRADA')?.timestamp;
+      const saidaAlmoco = dayRecords.find(r => r.type === 'SAIDA_ALMOCO')?.timestamp;
+      const retornoAlmoco = dayRecords.find(r => r.type === 'RETORNO_ALMOCO')?.timestamp;
+      const saida = dayRecords.find(r => r.type === 'SAIDA')?.timestamp;
+
+      if (entrada && saidaAlmoco) {
+        totalMs += new Date(saidaAlmoco).getTime() - new Date(entrada).getTime();
+      } else if (entrada && saida && !saidaAlmoco && !retornoAlmoco) {
+        totalMs += new Date(saida).getTime() - new Date(entrada).getTime();
+      }
+      if (retornoAlmoco && saida) {
+        totalMs += new Date(saida).getTime() - new Date(retornoAlmoco).getTime();
+      }
+      return totalMs / (1000 * 60 * 60);
+    };
+
+    const formatDecimalToTime = (decimalHours: number): string => {
+      const isNegative = decimalHours < 0;
+      const absHours = Math.abs(decimalHours);
+      const h = Math.floor(absHours);
+      const m = Math.round((absHours - h) * 60);
+      return `${isNegative ? '-' : ''}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+
+    const csvRows: string[] = [];
+    csvRows.push(`Relatório de Ponto - ${user.name}`);
+    csvRows.push(`Período: ${rangeOnly === 'true' ? `${startDate} até ${endDate}` : 'Geral (Todos os registros)'}`);
+    csvRows.push(`Cargo: ${user.role === 'ADMIN' ? 'Administrador' : 'Funcionário'}`);
+    csvRows.push(`Empresa: ${user.company.name}`);
+    csvRows.push('');
+    csvRows.push('Data;Entrada;Almoço (Saída);Almoço (Retorno);Saída;Total Trabalhado;Saldo do Dia');
+
+    let grandTotalWorked = 0;
+    let totalExpected = 0;
+
+    for (const [dateStr, dailyRecords] of entries) {
+      const entradaTime = dailyRecords.find(r => r.type === 'ENTRADA')
+        ? new Date(dailyRecords.find(r => r.type === 'ENTRADA')!.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+        : '-';
+
+      const almoçoSaida = dailyRecords.find(r => r.type === 'SAIDA_ALMOCO')
+        ? new Date(dailyRecords.find(r => r.type === 'SAIDA_ALMOCO')!.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+        : '-';
+
+      const almoçoRetorno = dailyRecords.find(r => r.type === 'RETORNO_ALMOCO')
+        ? new Date(dailyRecords.find(r => r.type === 'RETORNO_ALMOCO')!.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+        : '-';
+
+      const saidaTime = dailyRecords.find(r => r.type === 'SAIDA')
+        ? new Date(dailyRecords.find(r => r.type === 'SAIDA')!.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+        : '-';
+
+      const dailyWorked = calculateDailyHours(dailyRecords);
+      const dailyBalance = dailyWorked - 8;
+
+      grandTotalWorked += dailyWorked;
+      totalExpected += 8;
+
+      const workedStr = formatDecimalToTime(dailyWorked);
+      const balanceStr = formatDecimalToTime(dailyBalance);
+
+      csvRows.push(`${dateStr};${entradaTime};${almoçoSaida};${almoçoRetorno};${saidaTime};${workedStr}h;${balanceStr}h`);
+    }
+
+    csvRows.push('');
+    csvRows.push(`Total de Horas Trabalhadas;${formatDecimalToTime(grandTotalWorked)}h`);
+    csvRows.push(`Saldo Geral do Período;${formatDecimalToTime(grandTotalWorked - totalExpected)}h`);
+
+    const csvContent = Buffer.concat([
+      Buffer.from([0xEF, 0xBB, 0xBF]),
+      Buffer.from(csvRows.join('\r\n'), 'utf-8')
+    ]);
+
+    const filename = `relatorio_ponto_${user.name.replace(/\s+/g, '_')}_${rangeOnly === 'true' ? `${startDate}_a_${endDate}` : 'geral'}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Erro ao gerar exportação', error);
+    res.status(500).send('Erro interno ao gerar planilha.');
+  }
+});
+
 app.get('/api/records/company/:companyId', async (req, res) => {
   try {
     const { companyId } = req.params;
@@ -425,7 +681,7 @@ app.get('/api/records/company/:companyId', async (req, res) => {
   }
 });
 
-// --- Rotas SysAdmin ---
+// ── Rotas SysAdmin ───────────────────────────────────────────────────────────
 
 app.post('/api/sysadmin/login', (req, res) => {
   const { email, password } = req.body;
@@ -475,7 +731,7 @@ app.put('/api/sysadmin/companies/:id/status', async (req, res) => {
   }
 });
 
-// --- Servir Frontend ---
+// ── Servir Frontend ─────────────────────────────────────────────────────────
 const frontendPath = path.join(__dirname, '../../dist');
 app.use(express.static(frontendPath));
 app.get('/{*path}', (req, res) => {
@@ -485,4 +741,9 @@ app.get('/{*path}', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  if (VAPID_PUBLIC_KEY) {
+    console.log('🔔 Web Push VAPID configurado ✅');
+  } else {
+    console.log('⚠️  VAPID não configurado — notificações push desabilitadas');
+  }
 });

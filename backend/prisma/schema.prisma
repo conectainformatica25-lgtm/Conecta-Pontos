@@ -29,6 +29,7 @@ model User {
   webauthnCounter      Int          @default(0)
   faceDescriptor       String?      // base64 da foto de referência
   records              TimeRecord[]
+  pushSubscriptions    PushSubscription[]
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 }
@@ -37,7 +38,18 @@ model TimeRecord {
   id        String   @id @default(uuid())
   userId    String
   companyId String
-  type      String   // "CLOCK_IN", "CLOCK_OUT", "LUNCH_START", "LUNCH_END"
+  type      String   // "ENTRADA", "SAIDA_ALMOCO", "RETORNO_ALMOCO", "SAIDA"
   timestamp DateTime @default(now())
+  photo     String?  // base64 da foto capturada no ponto
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
